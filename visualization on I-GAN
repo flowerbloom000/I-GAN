@@ -1,0 +1,93 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[1]:
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+import pylab
+
+pylab.rcParams['figure.figsize'] = (5.0, 4.0)
+# 读取数据
+X = np.load('data_two_cluster.npz')
+x = X['data']
+y = X['target']
+# 不同标签数据
+x1 = x[y==0]
+x2 = x[y==1]
+# 不同标签数据个数
+num1 = sum(y==0)
+num2 = sum(y==1)
+# 画出图像
+plt.scatter(x2[:,0], x2[:,1], marker='o', c = 'g')
+plt.scatter(x1[:,0], x1[:,1], marker='o', c = 'r')
+plt.show()
+
+
+# In[2]:
+
+
+xg1 = np.load('GAN_128.npz')['data']
+xg2 = np.load('GAN_noise_128.npz')['data']
+xg3 = np.load('GAN_loss_128.npz')['data']
+xg4 = np.load('GAN_ping_128.npz')['data']
+xg5 = np.load('I_GAN_128.npz')['data']
+
+
+# In[3]:
+
+
+import pylab
+pylab.rcParams['figure.figsize'] = (18.0, 9.0)
+plt.rcParams['font.sans-serif']=['SimHei']
+plt.rcParams['axes.unicode_minus'] = False
+
+plt.subplot(2,3,1)
+plt.title('(a) Raw Data', fontweight='bold', fontsize=16)
+plt.scatter(x2[:,0], x2[:,1], marker='o', c = 'g', label="$N$")
+plt.scatter(x1[:,0], x1[:,1], marker='o', c = 'r', label="$P$")
+plt.legend()
+
+plt.subplot(2,3,2)
+plt.title('(b) GAN', fontweight='bold', fontsize=16)
+plt.scatter(x2[:,0], x2[:,1], marker='o', c = 'g', label="$N$")
+plt.scatter(x1[:,0], x1[:,1], marker='o', c = 'r', label="$P$")
+plt.scatter(xg1[:,0], xg1[:,1], marker='o', label="$P_{new}$")
+plt.legend()
+
+plt.subplot(2,3,3)
+plt.title('(c) Strategy I', fontweight='bold', fontsize=16)
+plt.scatter(x2[:,0], x2[:,1], marker='o', c = 'g', label="$N$")
+plt.scatter(x1[:,0], x1[:,1], marker='o', c = 'r', label="$P$")
+plt.scatter(xg2[:,0], xg2[:,1], marker='o', label="$P_{new}$")
+plt.legend()
+
+plt.subplot(2,3,4)
+plt.title('(d) Strategy II', fontweight='bold', fontsize=16)
+plt.scatter(x2[:,0], x2[:,1], marker='o', c = 'g', label="$N$")
+plt.scatter(x1[:,0], x1[:,1], marker='o', c = 'r', label="$P$")
+plt.scatter(xg3[:,0], xg3[:,1], marker='o', label="$P_{new}$")
+plt.legend()
+
+plt.subplot(2,3,5)
+plt.title('(e) Strategy III', fontweight='bold', fontsize=16)
+plt.scatter(x2[:,0], x2[:,1], marker='o', c = 'g', label="$N$")
+plt.scatter(x1[:,0], x1[:,1], marker='o', c = 'r', label="$P$")
+plt.scatter(xg4[:,0], xg4[:,1], marker='o', label="$P_{new}$")
+plt.legend()
+
+plt.subplot(2,3,6)
+plt.title('(f) I-GAN', fontweight='bold', fontsize=16)
+plt.scatter(x2[:,0], x2[:,1], marker='o', c = 'g', label="$N$")
+plt.scatter(x1[:,0], x1[:,1], marker='o', c = 'r', label="$P$")
+plt.scatter(xg5[:,0], xg5[:,1], marker='o', label="$P_{new}$")
+plt.legend()
+plt.show()
+
+
+# In[ ]:
+
+
+
+
