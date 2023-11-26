@@ -1,0 +1,290 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import random
+import math
+from numpy.linalg import cholesky
+from sklearn.model_selection import StratifiedKFold
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
+from sklearn.metrics import davies_bouldin_score
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.distributions.normal import Normal
+
+
+data = pd.read_csv('/Users/flower_bloom_inf163.com/Desktop/imbalanced learning/data/KEEL/zoo-3.csv', comment='@', header=None)
+data.iloc[:, -1] = data.iloc[:, -1].map(lambda x: 0 if x.strip() == 'negative' else 1)
+
+x = data.iloc[:, 0: -1].values
+y = data.iloc[:, -1].values
+
+print(x)
+print(y)
+print(np.shape(x))
+
+def preprocess(x):
+    s=np.shape(x)
+    for i in range(s[1]):
+        Str=list(set(x[:,i]))
+        a=0
+        for j in range(len(Str)):
+            if is_number(x[:,i][0]) is False:
+                a=a+1
+        if a>0:
+            for j in range(len(Str)):
+                x[:,i][x[:,i]==Str[j]]=j
+    x = x.astype(float)
+    ##dimensionality reduction using PCA
+    for i in range(2, s[0]+1):
+        pca = PCA(n_components=i)   
+        pca.fit(x)    
+##        if np.sum(pca.explained_variance_ratio_) > 0.9:
+        if np.sum(pca.explained_variance_ratio_) > 0.9:
+            new_x = pca.fit_transform(x)
+            Series_Length = i
+            break
+    return new_x, Series_Length
+
+def is_number(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        pass
+    return False
+
+def cluster(X, Y):
+    P_x = X[Y==1]; P_y = Y[Y==1]
+    tmp = 1000; k=0
+    for i in range(2, 6):
+        kmeans = KMeans(n_clusters=i, random_state=0).fit_predict(P_x)
+        dbs = davies_bouldin_score(P_x, kmeans)
+        if dbs<tmp:
+            tmp = dbs
+            k = i
+            kmeans_tmp = kmeans
+    kmeans_tmp = kmeans_tmp.astype(P_y.dtype)
+    P_y = kmeans_tmp
+    max_P_y = max(P_y)
+#     print('P_y', P_y)
+    for m in range(len(P_y)):
+        for i in range(max_P_y + 1):
+            if sum(P_y == i) == 1:
+                P_y = list(P_y)
+                P_x = list(P_x)
+                P_y.remove(i)
+                P_x.remove(P_x[P_y == i])
+                P_y = np.array(P_y)
+                P_x = np.array(P_x)
+                for j in range(len(P_y)):
+                    if P_y[j] > i:
+                        P_y[j] = P_y[j] - 1
+                max_P_y = max(P_y)
+                break
+    max_P_y_new = max(P_y)
+#     print('P_y', P_y)
+    return P_x, P_y, max_P_y_new
+
+# Generating noise vector
+def Gauss_nosie(x_resample, number):
+    x_gz = 0
+    for i in range(train_y_max + 1):
+        Mean = np.mean(x_resample[train_y_small==i], axis=0)
+        Cov = np.cov(x_resample[train_y_small==i], rowvar=0)
+        x_z = np.random.multivariate_normal(Mean, Cov, number)
+        x_gz += sum(train_y_small==i)/num3 * x_z
+    return torch.Tensor(x_gz)
+
+def next_batch(train_data, batch_size):
+    index = [i for i in range(num)]
+    np.random.shuffle(index)
+    batch_data = np.zeros([batch_size, train_data.shape[1]])
+    for i in range(batch_size):
+        batch_data[i] = train_data[index[i]]
+    return batch_data
+
+class Generator(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super(Generator, self).__init__()
+        self.map1 = nn.Linear(input_size, hidden_size)
+        self.map2 = nn.Linear(hidden_size, output_size)
+        self.xfer = torch.nn.SELU()
+    
+    def forward(self, x):
+        x = self.xfer( self.map1(x) )
+        return self.xfer( self.map2( x ) )
+
+class Discriminator(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super(Discriminator, self).__init__()
+        self.map1 = nn.Linear(input_size, hidden_size)
+        self.map2 = nn.Linear(hidden_size, output_size)
+        self.elu = torch.nn.ELU()
+
+    def forward(self, x):
+        x = self.elu(self.map1(x))
+        return torch.sigmoid( self.map2(x) )
+    
+# training discriminator
+def train_D_on_generated_actual(x_resample):
+    noise = Gauss_nosie(x_resample, d_minibatch_size)
+    fake_data = G(noise)
+    fake_decision = D(fake_data + noise)
+    fake_error = criterion(fake_decision, torch.zeros(d_minibatch_size, 1))  # zeros = fake
+    fake_error.backward()
+    
+    batch_data = next_batch(actual_data, d_minibatch_size)
+    batch_data = torch.from_numpy(batch_data)
+    real_data = batch_data.float()
+
+    real_decision = D(real_data + noise)
+    real_error = criterion(real_decision, torch.ones(d_minibatch_size, 1))  # ones = true
+    real_error.backward()
+    
+# training generator 
+def train_G(x_resample):
+    noise = Gauss_nosie(x_resample, g_minibatch_size)
+    fake_data = G(noise)
+    fake_decision = D(fake_data + noise)
+    error = criterion(fake_decision, torch.ones(g_minibatch_size, 1))
+    error.backward()
+    return error.item(), fake_data
+
+x,Series_Length= preprocess(x)
+print(np.shape(x))
+g_input_size = Series_Length
+g_hidden_size = 10
+g_output_size = Series_Length
+
+d_input_size = Series_Length
+d_hidden_size = 10
+d_output_size = 1
+num_epochs = 5000
+
+d_learning_rate = 3e-3
+g_learning_rate = 8e-3
+
+G = Generator(input_size=g_input_size, hidden_size=g_hidden_size, output_size=g_output_size)
+D = Discriminator(input_size=d_input_size, hidden_size=d_hidden_size, output_size=d_output_size)
+
+criterion = nn.BCELoss()
+d_optimizer = optim.SGD(D.parameters(), lr=d_learning_rate )
+g_optimizer = optim.SGD(G.parameters(), lr=g_learning_rate )
+
+##d_minibatch_size = min(5,len(train_y_small))
+d_minibatch_size = 5
+g_minibatch_size = 5
+
+
+skf = StratifiedKFold(n_splits=5)
+
+Gmean10 = []
+Fmeasure10 = []
+Accuracy10 = []
+AUC10 = []
+
+for j in range(10):
+    for train_index, test_index in skf.split(x, y):
+        train_x = x[train_index]
+        test_x = x[test_index]
+        train_y = y[train_index]
+        test_y = y[test_index]
+
+        ##I_GAN
+        num4 = sum(train_y==0)
+
+        train_x_small, train_y_small, train_y_max = cluster(train_x, train_y)
+        d_minibatch_size = min(5,len(train_y_small))
+        
+        Mean = []
+        Cov = []
+
+        for i in range(train_y_max + 1):
+            train_x_mean = np.mean(train_x_small[train_y_small==i], axis=0)
+            Mean.append(train_x_mean)
+            train_x_std = np.std(train_x_small[train_y_small==i], axis=0)
+            Cov.append(np.cov(train_x_small[train_y_small==i], rowvar=0))
+            train_x_small[train_y_small==i] = (train_x_small[train_y_small==i] - train_x_mean) / train_x_std
+
+        num3 = len(train_y_small)
+        num = num3
+        actual_data = train_x_small
+
+        for epoch in range(num_epochs):
+            D.zero_grad()
+            train_D_on_generated_actual(actual_data)
+            d_optimizer.step()
+
+            G.zero_grad()
+            loss, generated = train_G(actual_data)
+            g_optimizer.step()
+        
+        # generate samples 
+        #  based on clusters
+
+        
+        Generator_data = []
+
+        for i in range(train_y_max + 1):
+            for j in range(math.ceil((num4 - num3) / num3)):
+                x_generator = G(Gauss_nosie(actual_data, sum(train_y_small==i))).detach().numpy()
+                x_generator_cov = np.cov(x_generator, rowvar=0)
+                train_x_small_cov = Cov[i]
+
+                D_gen, V_gen = np.linalg.eig(x_generator_cov)
+                D_train, V_train = np.linalg.eig(train_x_small_cov)
+                M = np.diag(np.sqrt(D_train / D_gen))
+
+                x_generator = x_generator @ V_gen @ M @ V_train.T + Mean[i]
+                Generator_data.append(np.array(x_generator))
+
+        x_generator = Generator_data[0]
+        for i in range(1, len(Generator_data)):
+            x_generator = np.vstack((x_generator, Generator_data[i]))
+            
+        x_generator = np.array(random.sample(list(x_generator), num4-num3))
+        num_target = num4-num3
+        
+        where_are_nan = np.isnan(x_generator)
+        where_are_inf = np.isinf(x_generator)
+        x_generator[where_are_nan] = 0
+        x_generator[where_are_inf] = 0
+        x_generator = x_generator.real
+        
+        x_data10 = np.vstack((train_x, x_generator))
+        y_target10 = np.hstack((train_y, [1]*(num_target)))
+
+        # SVM classifier
+        from sklearn import svm
+        from sklearn.metrics import f1_score
+        from sklearn.metrics import accuracy_score
+        from imblearn.metrics import geometric_mean_score
+        from sklearn.metrics import roc_auc_score
+        model = svm.SVC(kernel='rbf', C=1, gamma=1)
+        
+        model.fit(x_data10, y_target10)
+        predicted_y10 = model.predict(test_x)
+        Gmean = geometric_mean_score(test_y, predicted_y10)
+        Fmeasure = f1_score(test_y, predicted_y10)
+        Accuracy = accuracy_score(test_y, predicted_y10)
+        AUC = roc_auc_score(test_y, predicted_y10)
+        Gmean10.append(Gmean)
+        Fmeasure10.append(Fmeasure)
+        Accuracy10.append(Accuracy)
+        AUC10.append(AUC)
+    print('OVER')
+
+print('Gmean:', round(np.mean(Gmean10), 4))
+print('Fmeasure:', round(np.mean(Fmeasure10), 4))
+print('Accuracy:', round(np.mean(Accuracy10), 4))
+print('AUC:', round(np.mean(AUC10), 4))
+
+dt = pd.DataFrame(columns=['Gmean', 'Fmeasure', 'Accuracy', 'AUC'])
+dt['Gmean'] = np.round(Gmean10, 4)
+dt['Fmeasure'] = np.round(Fmeasure10, 4)
+dt['Accuracy'] = np.round(Accuracy10, 4)
+dt['AUC'] = np.round(AUC10, 4)
+dt.to_csv('/Users/flower_bloom_inf163.com/Desktop/imbalanced learning/7 I-GAN/I-GAN experiments/experiments(I-GAN)/zoo-3.csv', index = True)
